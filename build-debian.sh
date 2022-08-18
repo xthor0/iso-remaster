@@ -1,4 +1,15 @@
 #!/bin/bash
+
+# if we're running on MacOS - tell the user this needs to be run from a container.
+if [ "$(uname -s)" == "Darwin" ]; then
+  echo "Please use the podman implementation for MacOS :: exiting."
+  exit 255
+fi
+
+# setup commands for docker container
+# I wanted to use rocky 8 -- but there's no damn syslinux package in the aarch64 version? Really? weird.
+# apt install -y isolinux p7zip-full xorriso curl wget
+
 script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
 
 # display usage
@@ -13,7 +24,8 @@ do not specify full path to preseed - the file must be located in ${script_dir}/
 
 # make sure proper tools are installed
 for tool in 7z xorriso curl wget sha256sum sed; do
-    if not type ${tool} >& /dev/null; then
+    type ${tool} >& /dev/null
+    if [ $? -ne 0 ]; then
         echo "Error: ${tool} is not installed (or in \$PATH)"
         exit 255
     fi
@@ -28,21 +40,30 @@ while getopts "p:" OPTION; do
 done
 
 # where we'll download the ISO
-cachedir="${HOME}/tmp/debian-iso-remaster"
+cachedir="${script_dir}/.cache"
 mirror_url="http://mirror.xmission.com/debian-cd/current/amd64/iso-cd"
 newiso="debian-11-custom-$(date --iso).iso"
 
 # if preseed is not specified, we use the default one
 if [ -z "${preseed_name}" ]; then
-    preseed_file="${script_dir}/../preseed/preseed.cfg"
+    preseed_file="${script_dir}/preseed/preseed.cfg"
 else
-    preseed_file="${script_dir}/../preseed/${preseed_name}"
+    preseed_file="${script_dir}/preseed/${preseed_name}"
 fi
 
 # we should also make sure the preseed file exists
 if [ ! -f "${preseed_file}" ]; then
     echo "Error: ${preseed_file} not found."
     exit 255
+fi
+
+# make sure the cache dir exists, if not, create it
+if [ ! -d "${cachedir}" ]; then
+  mkdir -p "${cachedir}"
+  if [ $? -ne 0 ]; then
+    echo "Error: could not create directory ${cachedir}. Exiting."
+    exit 255
+  fi
 fi
 
 # head to the cache dir for the work that's about to begin...
@@ -66,8 +87,17 @@ if [ $? -ne 0 ]; then
     exit 255
 fi
 
+# podman + macos + mounted volumes == slow! let's try to move the building to a temp dir and see if it's any faster.
+# man, this is crazy. build times on my m1 mac studio (with ISO already downloaded):
+# before: 1m19.89s
+# after: 5.33s
+
+popd
+tmpdir=$(mktemp -d)
+pushd ${tmpdir}
+
 # extract the ISO
-7z x -obuild ${iso_name}
+7z x -obuild ${cachedir}/${iso_name}
 
 # remove cruft
 rm -rf build/'[BOOT]'
@@ -91,11 +121,17 @@ pushd build && find -follow -type f ! -name md5sum.txt -print0 | xargs -0 md5sum
 # run xorriso
 xorriso -as mkisofs -graft-points -b isolinux/isolinux.bin -no-emul-boot -boot-info-table -boot-load-size 4 -c isolinux/boot.cat -isohybrid-mbr /usr/lib/ISOLINUX/isohdpfx.bin \
 -eltorito-alt-boot -e boot/grub/efi.img -no-emul-boot -isohybrid-gpt-basdat -V "Debian 11 Custom" -o "${newiso}" -r build --sort-weight 0 / --sort-weight 1 /boot
-
-# later we'll clean up, but this time we won't
-rm -rf build
-
-echo "${cachedir}/${newiso} generated, exiting..."
+if [ $? -eq 0 ]; then
+  echo "Generated ISO: ${newiso}"
+  rm -rf build
+  echo "Copying ${newiso} to /mnt/data..."
+  cp ${newiso} /mnt/data
+  if [ $? -eq 0 ]; then
+    echo "Completed."
+  else
+    echo "Error copying file. I won't exit until you press ENTER, though, just in case you want to preserve the files."
+    read
+  fi
+fi
 
 exit 0
-

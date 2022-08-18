@@ -1,13 +1,20 @@
 #!/bin/bash
+
+# if we're running on MacOS - tell the user this needs to be run from a container.
+if [ "$(uname -s)" == "Darwin" ]; then
+  echo "Please use the podman implementation for MacOS :: exiting."
+  exit 255
+fi
+
 script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
 
 # display usage
 function usage() {
-	echo "`basename $0`: Build a Debian ISO with injected preseed file."
+	echo "`basename $0`: Build a Rocky Linux ISO with injected kickstart file."
 	echo "Usage:
 
 `basename $0` [ -p kickstart_name.file ]
-do not specify full path to preseed - the file must be located in ${script_dir}/preseed directory."
+do not specify full path to the kickstart file - the file must be located in ${script_dir}/kickstart directory."
 	exit 255
 }
 
@@ -28,22 +35,31 @@ while getopts "k:" OPTION; do
 done
 
 # where we'll download the ISO
-cachedir="${HOME}/tmp/rhel-iso-remaster"
+cachedir="${script_dir}/.cache"
 mirror_url="https://download.rockylinux.org/pub/rocky/8/isos/x86_64/"
 newiso="rocky-8-custom-$(date --iso).iso"
 label="ROCKY-8-CUST"
 
 # if preseed is not specified, we use the default one
 if [ -z "${kickstart_file}" ]; then
-    kickstart_file="${script_dir}/../kickstart/kickstart.cfg"
+    kickstart_file="${script_dir}/kickstart/kickstart.cfg"
 else
-    kickstart_file="${script_dir}/../kickstart/${kickstart_file}"
+    kickstart_file="${script_dir}/kickstart/${kickstart_file}"
 fi
 
 # we should also make sure the preseed file exists
 if [ ! -f "${kickstart_file}" ]; then
     echo "Error: ${kickstart_file} not found."
     exit 255
+fi
+
+# make sure the cache dir exists, if not, create it
+if [ ! -d "${cachedir}" ]; then
+  mkdir -p "${cachedir}"
+  if [ $? -ne 0 ]; then
+    echo "Error: could not create directory ${cachedir}. Exiting."
+    exit 255
+  fi
 fi
 
 # head to the cache dir for the work that's about to begin...
@@ -67,8 +83,12 @@ if [ $? -ne 0 ]; then
     exit 255
 fi
 
+popd
+tmpdir=$(mktemp -d)
+pushd ${tmpdir}
+
 # extract the ISO
-7z x -obuild ${iso_name}
+7z x -obuild ${cachedir}/${iso_name}
 
 # remove cruft
 rm -rf build/'[BOOT]'
@@ -99,11 +119,18 @@ cp build/EFI/BOOT/grub.cfg build/EFI/BOOT/BOOT.conf
 # run xorriso
 xorriso -as mkisofs -graft-points -b isolinux/isolinux.bin -no-emul-boot -boot-info-table -boot-load-size 4 -c isolinux/boot.cat -isohybrid-mbr /usr/lib/ISOLINUX/isohdpfx.bin \
 -eltorito-alt-boot -e images/efiboot.img -no-emul-boot -isohybrid-gpt-basdat -V "${label}" -o "${newiso}" -r build --sort-weight 0 /
-
-# later we'll clean up, but this time we won't
-rm -rf build
-
-echo "${cachedir}/${newiso} generated, exiting..."
+if [ $? -eq 0 ]; then
+  echo "Generated ISO: ${newiso}"
+  rm -rf build
+  echo "Copying ${newiso} to /mnt/data..."
+  cp ${newiso} /mnt/data
+  if [ $? -eq 0 ]; then
+    echo "Completed."
+  else
+    echo "Error copying file. I won't exit until you press ENTER, though, just in case you want to preserve the files."
+    read
+  fi
+fi
 
 exit 0
 
