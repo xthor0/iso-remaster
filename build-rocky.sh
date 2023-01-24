@@ -99,10 +99,13 @@ fi
 # build sha256 file
 echo "${sha256hash}  ${iso_name}" > ${iso_name}.sha256
 
+echo -n "Validating SHA256SUM... "
 sha256sum -c ${iso_name}.sha256
 if [ $? -ne 0 ]; then
     echo "Error validating hash -- exiting."
     exit 255
+else
+  echo "OK"
 fi
 
 popd
@@ -119,6 +122,11 @@ rm -rf build/'[BOOT]'
 ## TODO: prompt and generate password...? maybe?
 cp "${kickstart_file}" build/
 
+# back up isolinux.cfg for debug comparison
+cp build/isolinux/isolinux.cfg ${tmpdir}/isolinux.cfg
+cp build/EFI/BOOT/grub.cfg ${tmpdir}/grub.cfg
+cp build/EFI/BOOT/BOOT.conf ${tmpdir}/BOOT.conf
+
 # mbr boot tweaks
 sed -i "s/menu label ^Install Rocky Linux ${version}/menu label \^Automated Install Rocky Linux ${version}/g" build/isolinux/isolinux.cfg
 sed -i "s/append initrd=initrd.img inst.stage2=hd:LABEL=Rocky-.*-x86_64-dvd quiet/append initrd=initrd.img inst.stage2=hd:LABEL=Rocky-.*-x86_64-dvd quiet inst.ks=hd:LABEL=${label}:\/$(basename ${kickstart_file})/g" build/isolinux/isolinux.cfg
@@ -134,10 +142,27 @@ sed -i 's/set default="1"/set default="0"/g' build/EFI/BOOT/grub.cfg
 # the LABEL has to match what we're going to label the ISO
 for file in build/isolinux/isolinux.cfg build/EFI/BOOT/grub.cfg; do
     sed -i "s/LABEL=Rocky-.*-x86_64-dvd/LABEL=${label}/g" "${file}"
+    if [ $? -ne 0 ]; then
+      echo "Error running sed command -- exiting."
+      exit 255
+    fi
 done
 
 # don't know why these files are the same, but who am I to argue
 cp build/EFI/BOOT/grub.cfg build/EFI/BOOT/BOOT.conf
+
+# DEBUGGING: diff
+#echo "DIFF: isolinux.cfg"
+#echo "============"
+#diff build/isolinux/isolinux.cfg ${tmpdir}/isolinux.cfg
+
+#echo "DIFF: grub.cfg"
+#echo "============"
+#diff build/EFI/BOOT/grub.cfg ${tmpdir}/grub.cfg
+
+#echo "DIFF: BOOT.conf"
+#echo "============"
+#diff build/EFI/BOOT/BOOT.conf ${tmpdir}/BOOT.conf
 
 # run xorriso
 xorriso -as mkisofs -graft-points -b isolinux/isolinux.bin -no-emul-boot -boot-info-table -boot-load-size 4 -c isolinux/boot.cat -isohybrid-mbr /usr/lib/ISOLINUX/isohdpfx.bin \

@@ -35,4 +35,12 @@ if [ $? -ne 0 ]; then
   exit 255
 fi
 
-podman run --rm -it -v $(pwd):/mnt/data isobuilder /mnt/data/build-${target}.sh -v ${version}
+# podman command is different when running a system with selinux
+type getenforce >& /dev/null
+if [ $? -eq 0 ]; then
+  echo "SELinux detected..."
+  podman run --rm -it -v $(pwd):/mnt/data:Z isobuilder /mnt/data/build-${target}.sh -v ${version}
+else
+  podman run --rm -it -v $(pwd):/mnt/data isobuilder /mnt/data/build-${target}.sh -v ${version}
+fi
+
