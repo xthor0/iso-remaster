@@ -13,7 +13,7 @@ function usage() {
 	echo "`basename $0`: Build a Rocky Linux ISO with injected kickstart file."
 	echo "Usage:
 
-`basename $0` [ -p kickstart_name.file ]
+`basename $0` [ -k kickstart_name.file ]
 do not specify full path to the kickstart file - the file must be located in ${script_dir}/kickstart directory."
 	exit 255
 }
@@ -27,22 +27,28 @@ for tool in 7z xorriso curl wget sha256sum sed; do
 done
 
 # allow user to specify which preseed to push into ISO
-while getopts "k:" OPTION; do
+while getopts "k:v:" OPTION; do
     case ${OPTION} in
         k) kickstart_file=${OPTARG};;
+        v) version=${OPTARG};;
         *) usage;;
     esac
 done
 
+if [ -z "${version}" ]; then
+  # default to rocky 8
+  version=8
+fi
+
 # where we'll download the ISO
 cachedir="${script_dir}/.cache"
-mirror_url="https://download.rockylinux.org/pub/rocky/8/isos/x86_64/"
-newiso="rocky-8-custom-$(date --iso).iso"
-label="ROCKY-8-CUST"
+mirror_url="https://download.rockylinux.org/pub/rocky/${version}/isos/x86_64"
+newiso="rocky-${version}-custom-$(date --iso).iso"
+label="ROCKY-${version}-CUST"
 
 # if preseed is not specified, we use the default one
 if [ -z "${kickstart_file}" ]; then
-    kickstart_file="${script_dir}/kickstart/kickstart.cfg"
+    kickstart_file="${script_dir}/kickstart/ks-rocky${version}.cfg"
 else
     kickstart_file="${script_dir}/kickstart/${kickstart_file}"
 fi
@@ -65,18 +71,34 @@ fi
 # head to the cache dir for the work that's about to begin...
 pushd "${cachedir}"
 
-# we need to know what the latest ISO on the mirror is
-curl -s ${mirror_url}/CHECKSUM | grep minimal.iso | grep -v '^#' > sha256 
-iso_name=$(cat sha256 | awk '{ print $2 }' | tr -d \(\))
-mv sha256 ${iso_name}.sha256
+# rocky has changed some things on their mirror and now provides a static named file
+# we'll need to rename it so we don't clobber a downloaded 8 iso with 9, for example
+iso_name="rocky-${version}-minimal.iso"
 
 if [ -f ${iso_name} ]; then
     echo "ISO already downloaded, continuing..."
 else
-    wget ${mirror_url}/${iso_name}
+    wget ${mirror_url}/Rocky-x86_64-minimal.iso
+    if [ $? -ne 0 ]; then
+      echo "Error downloading Rocky-x86_64-minimal.iso -- exiting."
+      exit 255
+    fi
+    mv Rocky-x86_64-minimal.iso ${iso_name}
 fi
 
 # check the sha256 hash
+# grab the hash via curl
+sha256hash=$(curl -s ${mirror_url}/CHECKSUM | grep ^SHA256.\*Rocky-x86_64-minimal | awk '{ print $4 }')
+
+# validate we got a hash with regex
+if ! [[ "${sha256hash}" =~ ^[0-9a-f]{64}$ ]]; then  
+    echo "ERROR - curl did not return sha256 hash. Exiting."
+    exit 255
+fi
+
+# build sha256 file
+echo "${sha256hash}  ${iso_name}" > ${iso_name}.sha256
+
 sha256sum -c ${iso_name}.sha256
 if [ $? -ne 0 ]; then
     echo "Error validating hash -- exiting."
@@ -98,19 +120,20 @@ rm -rf build/'[BOOT]'
 cp "${kickstart_file}" build/
 
 # mbr boot tweaks
-sed -i 's/menu label ^Install Rocky Linux 8/menu label \^Automated Install Rocky Linux 8/g' build/isolinux/isolinux.cfg
-sed -i "s/append initrd=initrd.img inst.stage2=hd:LABEL=Rocky-8-6-x86_64-dvd quiet/append initrd=initrd.img inst.stage2=hd:LABEL=Rocky-8-6-x86_64-dvd quiet inst.ks=hd:LABEL=${label}:\/$(basename ${kickstart_file})/g" build/isolinux/isolinux.cfg
+sed -i "s/menu label ^Install Rocky Linux ${version}/menu label \^Automated Install Rocky Linux ${version}/g" build/isolinux/isolinux.cfg
+sed -i "s/append initrd=initrd.img inst.stage2=hd:LABEL=Rocky-.*-x86_64-dvd quiet/append initrd=initrd.img inst.stage2=hd:LABEL=Rocky-.*-x86_64-dvd quiet inst.ks=hd:LABEL=${label}:\/$(basename ${kickstart_file})/g" build/isolinux/isolinux.cfg
 sed -i '/menu default/d' build/isolinux/isolinux.cfg
-sed -i '/menu label \^Automated Install Rocky Linux 8/a \ \ menu default' build/isolinux/isolinux.cfg
+sed -i "/menu label \^Automated Install Rocky Linux ${version}/a \ \ menu default" build/isolinux/isolinux.cfg
 
 # uefi boot tweaks
-sed -i 's/menuentry '\''Install Rocky Linux 8/menuentry '\''Automated Install Rocky Linux 8/g' build/EFI/BOOT/grub.cfg
-sed -i "/linuxefi \/images\/pxeboot\/vmlinuz inst.stage2=hd:LABEL=Rocky-8-6-x86_64-dvd quiet/ s/$/ inst.ks=hd:LABEL=${label}:\/$(basename ${kickstart_file})/" build/EFI/BOOT/grub.cfg
+#sed -i 's/menuentry '\''Install Rocky Linux 8/menuentry '\''Automated Install Rocky Linux 8/g' build/EFI/BOOT/grub.cfg
+sed -i "s/menuentry 'Install Rocky Linux ${version}/menuentry 'Automated Install Rocky Linux ${version}/g" build/EFI/BOOT/grub.cfg
+sed -i "/linuxefi \/images\/pxeboot\/vmlinuz inst.stage2=hd:LABEL=Rocky-.*-x86_64-dvd quiet/ s/$/ inst.ks=hd:LABEL=${label}:\/$(basename ${kickstart_file})/" build/EFI/BOOT/grub.cfg
 sed -i 's/set default="1"/set default="0"/g' build/EFI/BOOT/grub.cfg
 
 # the LABEL has to match what we're going to label the ISO
 for file in build/isolinux/isolinux.cfg build/EFI/BOOT/grub.cfg; do
-    sed -i "s/LABEL=Rocky-8-6-x86_64-dvd/LABEL=${label}/g" "${file}"
+    sed -i "s/LABEL=Rocky-.*-x86_64-dvd/LABEL=${label}/g" "${file}"
 done
 
 # don't know why these files are the same, but who am I to argue

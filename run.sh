@@ -5,13 +5,14 @@ function usage() {
 	echo "`basename $0`: Build an ISO image for either Debian 11 or Rocky Linux 8"
 	echo "Usage:
 
-`basename $0` -t [ debian | rocky ]"
+`basename $0` -t [ debian | rocky ] -v [ version # ]"
 	exit 255
 }
 
-while getopts "t:" OPTION; do
+while getopts "t:v:" OPTION; do
     case ${OPTION} in
         t) target=${OPTARG};;
+        v) version=${OPTARG};;
         *) usage;;
     esac
 done
@@ -34,4 +35,4 @@ if [ $? -ne 0 ]; then
   exit 255
 fi
 
-podman run --rm -it -v $(pwd):/mnt/data isobuilder /mnt/data/build-${target}.sh
+podman run --rm -it -v $(pwd):/mnt/data isobuilder /mnt/data/build-${target}.sh -v ${version}
