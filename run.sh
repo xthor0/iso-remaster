@@ -5,23 +5,41 @@ function usage() {
 	echo "`basename $0`: Build an ISO image for either Debian 11 or Rocky Linux 8"
 	echo "Usage:
 
-`basename $0` -t [ debian | rocky ] -v [ version # ]"
+`basename $0` -t [ debian | rocky ] -v [ version # ] [ -k name_of_kickstart.file ]"
 	exit 255
 }
 
-while getopts "t:v:" OPTION; do
+while getopts "t:v:k:" OPTION; do
     case ${OPTION} in
         t) target=${OPTARG};;
         v) version=${OPTARG};;
+        k) kickstart_file=${OPTARG};;
         *) usage;;
     esac
 done
+
+script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
 
 case ${target} in
   debian) true;;
   rocky) true;;
   *) echo -e "Invalid target!\n"; usage;;
 esac
+
+if [ -z "${kickstart_file}" ]; then
+  kickstart_file="${script_dir}/kickstart/ks-rocky${version}.cfg"
+else
+  kickstart_file="${script_dir}/kickstart/${kickstart_file}"
+fi
+
+# let's make sure the kickstart file exists
+test -f "${kickstart_file}"
+if [ $? -ne 0 ]; then
+  echo "Error: ${kickstart_file} not found. Exiting..."
+  exit 255
+else
+  echo "Using kickstart file: ${kickstart_file}"
+fi
 
 type podman >& /dev/null
 if [ $? -ne 0 ]; then
