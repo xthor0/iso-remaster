@@ -20,6 +20,13 @@ done
 
 script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
 
+# This will *NOT* run on aarch64 architectures.
+# syslinux was apparently not built for aarch64 on any RHEL or derivative.
+if [ "$(uname -m)" != "x86_64" ]; then
+  echo "Sorry, but this setup will only work on x86_64 architectures. Exiting."
+  exit 255
+fi
+
 case ${target} in
   debian) true;;
   rocky) true;;
@@ -27,19 +34,10 @@ case ${target} in
 esac
 
 if [ -z "${kickstart_file}" ]; then
-  kickstart_file="${script_dir}/kickstart/ks-rocky${version}.cfg"
-else
-  kickstart_file="${script_dir}/kickstart/${kickstart_file}"
+  kickstart_file="ks-rocky${version}"
 fi
 
-# let's make sure the kickstart file exists
-test -f "${kickstart_file}"
-if [ $? -ne 0 ]; then
-  echo "Error: ${kickstart_file} not found. Exiting..."
-  exit 255
-else
-  echo "Using kickstart file: ${kickstart_file}"
-fi
+echo "Using kickstart file: ${kickstart_file}"
 
 type podman >& /dev/null
 if [ $? -ne 0 ]; then
@@ -57,8 +55,8 @@ fi
 type getenforce >& /dev/null
 if [ $? -eq 0 ]; then
   echo "SELinux detected..."
-  podman run --rm -it -v $(pwd):/mnt/data:Z isobuilder /mnt/data/build-${target}.sh -v ${version}
+  podman run --rm -it -v $(pwd):/mnt/data:Z isobuilder /mnt/data/build-${target}.sh -v ${version} -k "${kickstart_file}"
 else
-  podman run --rm -it -v $(pwd):/mnt/data isobuilder /mnt/data/build-${target}.sh -v ${version}
+  podman run --rm -it -v $(pwd):/mnt/data isobuilder /mnt/data/build-${target}.sh -v ${version} -k "${kickstart_file}"
 fi
 

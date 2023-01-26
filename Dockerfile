@@ -1,5 +1,8 @@
-# TODO: change this to Rocky so we can use ksvalidator
-FROM debian:bullseye-slim
-
-RUN apt update && apt-get install --no-install-recommends --yes isolinux p7zip-full xorriso curl wget ca-certificates tzdata && apt-get dist-upgrade --yes && rm -rf /var/lib/apt/lists/*
+# NOTE: This will *NOT* run on aarch64 architectures.
+# syslinux does not exist as a package when run on aarch64.
+FROM rockylinux:9
+RUN dnf install -y epel-release \
+    && dnf install -y syslinux xorriso wget p7zip-plugins which diffutils pykickstart \
+  	&& dnf clean all \
+  	&& rm -rf /var/cache/yum
 ENV TZ="America/Denver"

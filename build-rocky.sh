@@ -59,6 +59,15 @@ if [ ! -f "${kickstart_file}" ]; then
     exit 255
 fi
 
+# validate the kickstart file
+ksvalidator -e "${kickstart_file}"
+if [ $? -eq 0 ]; then
+  echo "Kickstart file validated successfully."
+else
+  echo "ERROR: ksvalidator failed"
+  exit 255
+fi
+
 # make sure the cache dir exists, if not, create it
 if [ ! -d "${cachedir}" ]; then
   mkdir -p "${cachedir}"
@@ -149,7 +158,10 @@ for file in build/isolinux/isolinux.cfg build/EFI/BOOT/grub.cfg; do
 done
 
 # don't know why these files are the same, but who am I to argue
-cp build/EFI/BOOT/grub.cfg build/EFI/BOOT/BOOT.conf
+# apparently BOOT.conf only exists on rocky linux 9
+if [ -f build/EFI/BOOT/BOOT.conf ]; then
+  cp build/EFI/BOOT/grub.cfg build/EFI/BOOT/BOOT.conf
+fi
 
 # DEBUGGING: diff
 #echo "DIFF: isolinux.cfg"
@@ -165,7 +177,7 @@ cp build/EFI/BOOT/grub.cfg build/EFI/BOOT/BOOT.conf
 #diff build/EFI/BOOT/BOOT.conf ${tmpdir}/BOOT.conf
 
 # run xorriso
-xorriso -as mkisofs -graft-points -b isolinux/isolinux.bin -no-emul-boot -boot-info-table -boot-load-size 4 -c isolinux/boot.cat -isohybrid-mbr /usr/lib/ISOLINUX/isohdpfx.bin \
+xorriso -as mkisofs -graft-points -b isolinux/isolinux.bin -no-emul-boot -boot-info-table -boot-load-size 4 -c isolinux/boot.cat -isohybrid-mbr /usr/share/syslinux/isohdpfx.bin \
 -eltorito-alt-boot -e images/efiboot.img -no-emul-boot -isohybrid-gpt-basdat -V "${label}" -o "${newiso}" -r build --sort-weight 0 /
 if [ $? -eq 0 ]; then
   echo "Generated ISO: ${newiso}"
