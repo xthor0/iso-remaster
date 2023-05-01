@@ -1,6 +1,6 @@
 # NOTE: This will *NOT* run on aarch64 architectures.
 # syslinux does not exist as a package when run on aarch64.
-FROM rockylinux:9
+FROM quay.io/rockylinux/rockylinux:9
 RUN dnf install -y epel-release \
     && dnf install -y syslinux xorriso wget p7zip-plugins which diffutils pykickstart \
   	&& dnf clean all \
