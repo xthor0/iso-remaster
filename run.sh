@@ -22,10 +22,11 @@ script_dir="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
 
 # This will *NOT* run on aarch64 architectures.
 # syslinux was apparently not built for aarch64 on any RHEL or derivative.
-if [ "$(uname -m)" != "x86_64" ]; then
-  echo "Sorry, but this setup will only work on x86_64 architectures. Exiting."
-  exit 255
-fi
+# since right now I'm in a "fuck you RHEL mood... who cares."
+#if [ "$(uname -m)" != "x86_64" ]; then
+#  echo "Sorry, but this setup will only work on x86_64 architectures. Exiting."
+#  exit 255
+#fi
 
 case ${target} in
   debian) true;;

@@ -17,8 +17,9 @@ function usage() {
 	echo "`basename $0`: Build a Debian ISO with injected preseed file."
 	echo "Usage:
 
-`basename $0` [ -p pressed_name.file ]
-do not specify full path to preseed - the file must be located in ${script_dir}/preseed directory."
+`basename $0` -v <version> [ -p pressed_name.file ]
+do not specify full path to preseed - the file must be located in ${script_dir}/preseed directory.
+version is either 11 or 12"
 	exit 255
 }
 
@@ -32,17 +33,23 @@ for tool in 7z xorriso curl wget sha256sum sed; do
 done
 
 # allow user to specify which preseed to push into ISO
-while getopts "p:" OPTION; do
+while getopts "p:v:" OPTION; do
     case ${OPTION} in
         p) preseed_name=${OPTARG};;
+        v) version=${OPTARG};;
         *) usage;;
     esac
 done
 
+# check usage
+if [ -z "${version}" ]; then
+  usage
+fi
+
 # where we'll download the ISO
 cachedir="${script_dir}/.cache"
 mirror_url="http://mirror.xmission.com/debian-cd/current/amd64/iso-cd"
-newiso="debian-11-custom-$(date --iso).iso"
+newiso="debian-${version}-custom-$(date --iso).iso"
 
 # if preseed is not specified, we use the default one
 if [ -z "${preseed_name}" ]; then
@@ -70,7 +77,7 @@ fi
 pushd "${cachedir}"
 
 # we need to know what the latest ISO on the mirror is
-curl -s http://mirror.xmission.com/debian-cd/current/amd64/iso-cd/SHA256SUMS | grep debian-11 > sha256 
+curl -s http://mirror.xmission.com/debian-cd/current/amd64/iso-cd/SHA256SUMS | grep debian-${version} > sha256 
 iso_name=$(cat sha256 | awk '{ print $2 }')
 mv sha256 ${iso_name}.sha256
 
