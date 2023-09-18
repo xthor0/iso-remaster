@@ -49,7 +49,8 @@ fi
 # where we'll download the ISO
 cachedir="${script_dir}/.cache"
 mirror_url="http://mirror.xmission.com/debian-cd/current/amd64/iso-cd"
-newiso="debian-${version}-custom-$(date --iso).iso"
+# testing a theory - if we use the (ugh) DVD version, will things work better?
+#mirror_url="http://mirror.xmission.com/debian-cd/current/amd64/iso-dvd"
 
 # if preseed is not specified, we use the default one
 if [ -z "${preseed_name}" ]; then
@@ -76,8 +77,25 @@ fi
 # head to the cache dir for the work that's about to begin...
 pushd "${cachedir}"
 
-# we need to know what the latest ISO on the mirror is
-curl -s http://mirror.xmission.com/debian-cd/current/amd64/iso-cd/SHA256SUMS | grep debian-${version} > sha256 
+# are we dealing with netinst ISOs, or DVDs?
+curl -s ${mirror_url}/SHA256SUMS | grep -q netinst
+if [ $? -eq 0 ]; then
+  curl -s ${mirror_url}/SHA256SUMS | grep debian-${version} > sha256 
+  newiso="debian-${version}-netinst-preseed-$(date --iso).iso"
+else
+  curl -s ${mirror_url}/SHA256SUMS | grep debian-${version} | grep DVD-1.iso > sha256 
+  newiso="debian-${version}-DVD-preseed-$(date --iso).iso"
+fi
+
+# make sure sha256 has... content, otherwise... die
+if [ -s sha256 ]; then
+  echo "sha256 has content, proceeding..."
+else
+  echo "sha256 is empty! Exiting!"
+  exit 255
+fi
+
+# get the name of the ISO we'll be downloading
 iso_name=$(cat sha256 | awk '{ print $2 }')
 mv sha256 ${iso_name}.sha256
 
@@ -116,18 +134,21 @@ cp "${preseed_file}" build/
 
 # mangle gtk.cfg for isolinux (MBR-based boot)
 sed -i 's/menu label \^Graphical install/menu label \^Automated install/g' build/isolinux/gtk.cfg 
-sed -i 's/append.*/append vga=788 initrd=\/install.amd\/gtk\/initrd.gz auto=true preseed\/file=\/cdrom\/preseed.cfg locale=en_US.UTF-8 keymap=us language=us country=US theme=dark --- quiet/g' build/isolinux/gtk.cfg 
+# sed -i 's/append.*/append vga=788 initrd=\/install.amd\/gtk\/initrd.gz auto=true preseed\/file=\/cdrom\/preseed.cfg locale=en_US.UTF-8 keymap=us language=us country=US theme=dark --- quiet/g' build/isolinux/gtk.cfg 
+## sed -i 's/append.*/append vga=788 initrd=\/install.amd\/gtk\/initrd.gz auto=true url=http:\/\/10.200.1.55\/preseed\/generic.preseed locale=en_US.UTF-8 keymap=us language=us country=US theme=dark hostname=debpreseed domain=xthorsworld.local --- quiet/g' build/isolinux/gtk.cfg 
+sed -i 's/append.*/append vga=788 initrd=\/install.amd\/gtk\/initrd.gz auto=true file=\/cdrom\/preseed.cfg locale=en_US.UTF-8 keymap=us language=us country=US theme=dark --- quiet/g' build/isolinux/gtk.cfg 
 
-# we need to do something else for UEFI, but I can't remember what... may have to fix it tomorrow
+# mangle grub.cfg for UEFI boot
 sed -i "s/menuentry --hotkey=g 'Graphical install'/menuentry --hotkey=g 'Automated install'/g" build/boot/grub/grub.cfg
-sed -i '/menuentry --hotkey=g '\''Automated install/{n;n;s/.*/    linux    \/install.amd\/vmlinuz vga=788 auto=true preseed\/file=\/cdrom\/preseed.cfg locale=en_US.UTF-8 keymap=us language=us country=US theme=dark --- quiet/}' build/boot/grub/grub.cfg
+# sed -i '/menuentry --hotkey=g '\''Automated install/{n;n;s/.*/    linux    \/install.amd\/vmlinuz vga=788 auto=true preseed\/file=\/cdrom\/preseed.cfg locale=en_US.UTF-8 keymap=us language=us country=US theme=dark --- quiet/}' build/boot/grub/grub.cfg
+sed -i '/menuentry --hotkey=g '\''Automated install/{n;n;s/.*/    linux    \/install.amd\/vmlinuz vga=788 auto=true interface=auto file=\/cdrom\/preseed.cfg locale=en_US.UTF-8 keymap=us language=us country=US theme=dark --- quiet/}' build/boot/grub/grub.cfg
 
 # fix the md5sums
 pushd build && find -follow -type f ! -name md5sum.txt -print0 | xargs -0 md5sum > md5sum.txt && popd
 
 # run xorriso
 xorriso -as mkisofs -graft-points -b isolinux/isolinux.bin -no-emul-boot -boot-info-table -boot-load-size 4 -c isolinux/boot.cat -isohybrid-mbr /usr/lib/ISOLINUX/isohdpfx.bin \
--eltorito-alt-boot -e boot/grub/efi.img -no-emul-boot -isohybrid-gpt-basdat -V "Debian 11 Custom" -o "${newiso}" -r build --sort-weight 0 / --sort-weight 1 /boot
+-eltorito-alt-boot -e boot/grub/efi.img -no-emul-boot -isohybrid-gpt-basdat -V "Debian ${version} Custom" -o "${newiso}" -r build --sort-weight 0 / --sort-weight 1 /boot
 if [ $? -eq 0 ]; then
   echo "Generated ISO: ${newiso}"
   rm -rf build
