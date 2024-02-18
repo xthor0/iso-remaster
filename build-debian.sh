@@ -48,9 +48,11 @@ fi
 
 # where we'll download the ISO
 cachedir="${script_dir}/.cache"
-mirror_url="http://mirror.xmission.com/debian-cd/current/amd64/iso-cd"
+#mirror_url="http://mirror.xmission.com/debian-cd/current/amd64/iso-cd"
+# above was empty on 2024.02.10 - weird
 # testing a theory - if we use the (ugh) DVD version, will things work better?
 #mirror_url="http://mirror.xmission.com/debian-cd/current/amd64/iso-dvd"
+mirror_url="https://cdimage.debian.org/debian-cd/current/amd64/iso-cd"
 
 # if preseed is not specified, we use the default one
 if [ -z "${preseed_name}" ]; then
@@ -136,12 +138,12 @@ cp "${preseed_file}" build/
 sed -i 's/menu label \^Graphical install/menu label \^Automated install/g' build/isolinux/gtk.cfg 
 # sed -i 's/append.*/append vga=788 initrd=\/install.amd\/gtk\/initrd.gz auto=true preseed\/file=\/cdrom\/preseed.cfg locale=en_US.UTF-8 keymap=us language=us country=US theme=dark --- quiet/g' build/isolinux/gtk.cfg 
 ## sed -i 's/append.*/append vga=788 initrd=\/install.amd\/gtk\/initrd.gz auto=true url=http:\/\/10.200.1.55\/preseed\/generic.preseed locale=en_US.UTF-8 keymap=us language=us country=US theme=dark hostname=debpreseed domain=xthorsworld.local --- quiet/g' build/isolinux/gtk.cfg 
-sed -i 's/append.*/append vga=788 initrd=\/install.amd\/gtk\/initrd.gz auto=true file=\/cdrom\/preseed.cfg locale=en_US.UTF-8 keymap=us language=us country=US theme=dark --- quiet/g' build/isolinux/gtk.cfg 
+sed -i 's/append.*/append vga=788 initrd=\/install.amd\/gtk\/initrd.gz auto=true file=\/cdrom\/preseed.cfg locale=en_US.UTF-8 keymap=us language=us country=US theme=dark interface=auto --- quiet/g' build/isolinux/gtk.cfg 
 
 # mangle grub.cfg for UEFI boot
 sed -i "s/menuentry --hotkey=g 'Graphical install'/menuentry --hotkey=g 'Automated install'/g" build/boot/grub/grub.cfg
 # sed -i '/menuentry --hotkey=g '\''Automated install/{n;n;s/.*/    linux    \/install.amd\/vmlinuz vga=788 auto=true preseed\/file=\/cdrom\/preseed.cfg locale=en_US.UTF-8 keymap=us language=us country=US theme=dark --- quiet/}' build/boot/grub/grub.cfg
-sed -i '/menuentry --hotkey=g '\''Automated install/{n;n;s/.*/    linux    \/install.amd\/vmlinuz vga=788 auto=true interface=auto file=\/cdrom\/preseed.cfg locale=en_US.UTF-8 keymap=us language=us country=US theme=dark --- quiet/}' build/boot/grub/grub.cfg
+sed -i '/menuentry --hotkey=g '\''Automated install/{n;n;s/.*/    linux    \/install.amd\/vmlinuz vga=788 auto=true file=\/cdrom\/preseed.cfg locale=en_US.UTF-8 keymap=us language=us country=US theme=dark net\.ifnames=0 interface=eth0 --- quiet/}' build/boot/grub/grub.cfg
 
 # fix the md5sums
 pushd build && find -follow -type f ! -name md5sum.txt -print0 | xargs -0 md5sum > md5sum.txt && popd
